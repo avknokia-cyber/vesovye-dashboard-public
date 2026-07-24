@@ -1,4 +1,4 @@
 # Vesovye dashboard
 
-This public repository contains an encrypted dashboard package for GitHub Pages.
-The dashboard data is stored in dashboard.enc.json and requires the shared password in the browser.
+This public repository contains encrypted dashboard packages split by location for GitHub Pages.
+Each location folder has its own encrypted dashboard data and its own shared password.

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Весовые - Уральский - вход</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0b141c; color: #f4f8fb; font-family: Arial, sans-serif; }
+    main { width: min(440px, calc(100vw - 32px)); box-sizing: border-box; background: #152431; border: 1px solid #283d50; border-radius: 8px; padding: 28px; }
+    h1 { margin: 0 0 18px; font-size: 24px; line-height: 1.2; }
+    label { display: block; color: #a7bfd0; font-size: 14px; margin-bottom: 8px; }
+    input { width: 100%; box-sizing: border-box; height: 44px; border-radius: 6px; border: 1px solid #3b5368; background: #0f1c27; color: #fff; padding: 0 12px; font-size: 17px; }
+    button { width: 100%; height: 44px; margin-top: 14px; border: 0; border-radius: 6px; background: #35c66b; color: #06120b; font-weight: 700; font-size: 15px; cursor: pointer; }
+    button:disabled { opacity: .65; cursor: wait; }
+    p { margin: 14px 0 0; color: #a7bfd0; line-height: 1.45; font-size: 14px; }
+    .error { color: #ff8b73; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Весовые - Уральский</h1>
+    <form id="unlockForm">
+      <label for="password">Пароль</label>
+      <input id="password" type="password" autocomplete="current-password" autofocus required>
+      <button id="submitButton" type="submit">Открыть дашборд</button>
+    </form>
+    <p id="status">Данные дашборда зашифрованы. Пароль не отправляется на сервер.</p>
+  </main>
+  <script>
+    const form = document.getElementById("unlockForm");
+    const passwordInput = document.getElementById("password");
+    const button = document.getElementById("submitButton");
+    const statusEl = document.getElementById("status");
+
+    function bytesFromBase64(value) {
+      const binary = atob(value);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    async function deriveKey(password, salt, iterations) {
+      const material = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(password),
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+      );
+      return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+        material,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"]
+      );
+    }
+
+    async function unlock(event) {
+      event.preventDefault();
+      button.disabled = true;
+      statusEl.className = "";
+      statusEl.textContent = "Открываю...";
+      try {
+        const response = await fetch("dashboard.enc.json?ts=" + Date.now(), { cache: "no-store" });
+        if (!response.ok) throw new Error("encrypted dashboard was not loaded");
+        const payload = await response.json();
+        const salt = bytesFromBase64(payload.salt);
+        const iv = bytesFromBase64(payload.iv);
+        const encrypted = bytesFromBase64(payload.ciphertext);
+        const tag = bytesFromBase64(payload.tag);
+        const combined = new Uint8Array(encrypted.length + tag.length);
+        combined.set(encrypted);
+        combined.set(tag, encrypted.length);
+        const key = await deriveKey(passwordInput.value, salt, payload.iterations);
+        const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, combined);
+        const html = new TextDecoder().decode(decrypted);
+        document.open();
+        document.write(html);
+        document.close();
+      } catch (error) {
+        statusEl.className = "error";
+        statusEl.textContent = "Пароль не подошел или дашборд еще не опубликован.";
+        button.disabled = false;
+      }
+    }
+
+    form.addEventListener("submit", unlock);
+  </script>
+</body>
+</html>
